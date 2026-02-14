@@ -49,24 +49,44 @@ def _parse_stmt(stmt):
         return None
     first = stmt[0]
     joined = ' '.join(stmt)
+
+    if first == 'else':
+        rest = [x for x in stmt[1:] if x != ';']
+        payload = _parse_stmt(rest) if rest else None
+        return {'type': 'Else', 'body': [payload] if payload else []}
+
     if first == 'return':
         return {'type': 'Return', 'value': ' '.join([x for x in stmt[1:] if x != ';']).strip()}
+
+    if first == 'if':
+        cond = joined[joined.find('(') + 1:joined.rfind(')')] if '(' in joined else joined[2:]
+        node = {'type': 'If', 'condition': cond.strip(), 'then': [], 'else': []}
+        if ')' in stmt:
+            close_idx = len(stmt) - 1 - stmt[::-1].index(')')
+            tail = [x for x in stmt[close_idx + 1:] if x != ';']
+            tail_node = _parse_stmt(tail)
+            if tail_node:
+                node['then'].append(tail_node)
+        return node
+
     if any(t in stmt for t in PRINT_TOKENS):
         return {'type': 'Print', 'value': _extract_print_value(stmt)}
+
     if '=' in stmt and first not in {'if', 'for', 'while'}:
         i = stmt.index('=')
         return {'type': 'Assignment', 'target': stmt[i - 1], 'value': ' '.join([x for x in stmt[i + 1:] if x != ';']).strip()}
-    if first == 'if':
-        cond = joined[joined.find('(') + 1:joined.rfind(')')] if '(' in joined else joined[2:]
-        return {'type': 'If', 'condition': cond.strip(), 'then': [], 'else': []}
+
     if first == 'for':
         return {'type': 'For', 'header': joined}
+
     if first == 'while':
         cond = joined[joined.find('(') + 1:joined.rfind(')')] if '(' in joined else joined[5:]
         return {'type': 'While', 'condition': cond.strip(), 'body': []}
+
     if '(' in stmt and ')' in stmt and first not in {'class'} | TYPE_TOKENS | MODIFIERS | CONTROL:
         args = [x for x in stmt[1:] if x not in {'(', ')', ',', ';'}]
         return {'type': 'Call', 'name': first, 'args': args}
+
     return None
 
 
@@ -76,9 +96,8 @@ def _parse_python(tokens):
     for line in _tokens_by_line(tokens):
         if not line:
             continue
-        first = line[0]
 
-        if first == 'def' and '(' in line and ')' in line:
+        if line[0] == 'def' and '(' in line and ')' in line:
             name = line[line.index('(') - 1]
             params = _clean_params(line[line.index('(') + 1:line.index(')')])
             current_fn = {'type': 'Function', 'name': name, 'params': params, 'body': []}
@@ -90,7 +109,6 @@ def _parse_python(tokens):
             current_fn['body'].append(node)
             continue
 
-        # any non-return line is treated as top-level for this educational grammar
         current_fn = None
         if node:
             body.append(node)
@@ -101,12 +119,22 @@ def _parse_python(tokens):
 def _split_brace_statements(tokens):
     statements = []
     cur = []
+    prev_line = None
     for t in tokens:
         v = t['value']
+        line = t.get('line')
+
+        if prev_line is not None and line != prev_line and cur:
+            statements.append(cur)
+            cur = []
+
         cur.append(v)
         if v in {';', '{', '}'}:
             statements.append(cur)
             cur = []
+
+        prev_line = line
+
     if cur:
         statements.append(cur)
     return statements
@@ -118,21 +146,33 @@ def _is_fn_header(stmt):
     if stmt[0] in CONTROL or stmt[0] in {'class'}:
         return False
     name = stmt[stmt.index('(') - 1]
-    if name == 'if' or name == 'for' or name == 'while':
+    if name in {'if', 'for', 'while'}:
         return False
     return stmt[0] in TYPE_TOKENS | MODIFIERS
+
+
+def _target(body, fn_stack):
+    if fn_stack and fn_stack[-1]['name'] != 'main':
+        return fn_stack[-1]['node']['body']
+    return body
 
 
 def _parse_brace_language(tokens):
     body = []
     fn_stack = []
     brace_depth = 0
+    last_if_target = None
+    pending_else_if = None
+    pending_then_if = None
+
     for stmt in _split_brace_statements(tokens):
         if not stmt:
             continue
+
         if stmt == ['{']:
             brace_depth += 1
             continue
+
         if stmt == ['}']:
             brace_depth = max(0, brace_depth - 1)
             while fn_stack and fn_stack[-1]['depth'] > brace_depth:
@@ -147,14 +187,46 @@ def _parse_brace_language(tokens):
                 body.append(fn)
             brace_depth += 1
             fn_stack.append({'name': name, 'node': fn, 'depth': brace_depth})
+            last_if_target = None
+            pending_else_if = None
+            pending_then_if = None
             continue
 
         node = _parse_stmt(stmt)
-        if node:
-            if fn_stack and fn_stack[-1]['name'] != 'main':
-                fn_stack[-1]['node']['body'].append(node)
-            else:
-                body.append(node)
+        if not node:
+            continue
+
+        target = _target(body, fn_stack)
+
+        if node['type'] == 'Else':
+            if last_if_target is not None:
+                payload = node.get('body', [])
+                if payload:
+                    last_if_target['else'] = payload
+                    pending_else_if = None
+                else:
+                    pending_else_if = last_if_target
+            continue
+
+        if pending_else_if is not None:
+            pending_else_if['else'] = [node]
+            pending_else_if = None
+            pending_then_if = None
+            last_if_target = None
+            continue
+
+        if pending_then_if is not None and node['type'] != 'Else':
+            pending_then_if['then'] = [node]
+            pending_then_if = None
+            continue
+
+        target.append(node)
+        if node['type'] == 'If':
+            last_if_target = node
+            if not node.get('then'):
+                pending_then_if = node
+        else:
+            last_if_target = None
 
     return {'type': 'Program', 'body': body}
 
