@@ -14,6 +14,11 @@ def validate_source(code: str):
 
 
 def run_cmd(cmd, cwd: Path):
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=5)
+    try:
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=5)
+    except FileNotFoundError:
+        return f"Runtime tool not found: {cmd[0]}"
+    except subprocess.TimeoutExpired:
+        return 'Execution timed out after 5 seconds.'
     out = (proc.stdout or '') + (proc.stderr or '')
     return out.strip()

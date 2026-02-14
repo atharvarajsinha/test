@@ -10,8 +10,7 @@ def generate_java(ir_path: Path, output_path: Path, class_name: str = 'Main'):
         if op == 'assign':
             lines.append(f"    int {n['target']} = {n['value'].replace(';', '')};")
         elif op == 'print':
-            escaped = n['value'].replace('"', '\\"')
-            lines.append(f'    System.out.println("{escaped}");')
+            lines.append(f"    System.out.println({n['value']});")
         elif op == 'if':
             lines += [f"    if ({n['condition']}) {{", "    }"]
         elif op == 'for':
