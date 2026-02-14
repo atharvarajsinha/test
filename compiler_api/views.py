@@ -20,10 +20,7 @@ class CompileView(APIView):
         if data['source_language'] == data['target_language']:
             return Response({'detail': 'Source and target language must differ.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            result = compile_code(data['source_language'], data['target_language'], data['code'])
-        except Exception as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        result = compile_code(data['source_language'], data['target_language'], data['code'])
         CompilationRecord.objects.create(
             source_code=data['code'],
             source_language=data['source_language'],
@@ -42,10 +39,7 @@ class RunCodeView(APIView):
     def post(self, request):
         serializer = RunRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        try:
-            output = run_code(serializer.validated_data['language'], serializer.validated_data['code'])
-        except Exception as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        output = run_code(serializer.validated_data['language'], serializer.validated_data['code'])
         return Response({'output': output}, status=status.HTTP_200_OK)
 
 

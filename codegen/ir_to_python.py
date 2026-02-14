@@ -13,8 +13,7 @@ def generate_python(ir_path: Path, output_path: Path):
         elif op == 'assign':
             lines.append(f"{n['target']} = {n['value']}")
         elif op == 'print':
-            # `value` is expression-like IR payload (e.g. `5`, `x + 1`, `"hi"`).
-            lines.append(f"print({n['value']})")
+            lines.append(f"print({repr(n['value'])})")
         elif op == 'if':
             lines += [f"if {n['condition']}:", "    pass"]
         elif op == 'for':

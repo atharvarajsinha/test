@@ -10,7 +10,8 @@ def generate_cpp(ir_path: Path, output_path: Path):
         if op == 'assign':
             lines.append(f"  int {n['target']} = {n['value'].replace(';', '')};")
         elif op == 'print':
-            lines.append(f"  cout << {n['value']} << endl;")
+            escaped = n['value'].replace('"', '\\"')
+            lines.append(f'  cout << "{escaped}" << endl;')
         elif op == 'if':
             lines += [f"  if ({n['condition']}) {{", "  }"]
         elif op == 'for':
