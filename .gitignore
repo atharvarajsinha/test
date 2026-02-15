@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+ml_model/best_model.pkl
+venv/
+.vscode/
+.env
